@@ -21,7 +21,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 // Allow requests from a specific origin
 app.use(cors({
-  origin: ['https://sojamart.vercel.app', 'http://localhost:5175', 'http://localhost:5174', 'http://localhost:5173', 'http://192.168.1.169:5173',],
+  origin: ['https://prissaura.vercel.app', 'http://localhost:5175', 'http://localhost:5174', 'http://localhost:5173', 'http://192.168.1.169:5173',],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'token']
 }));

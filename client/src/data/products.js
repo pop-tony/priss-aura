@@ -31,8 +31,8 @@ export const allProducts = [
   {
     id: '2',
     name: 'Samsung Galaxy Watch 6',
-    price: 350,
-    salePrice: 299,
+    price: 1,
+    salePrice: 1,
     category: 'Electronics',
     seller: 'Samsung',
     tags: ['trending'],
@@ -83,8 +83,8 @@ export const allProducts = [
   {
     id: '4',
     name: 'iPad Pro 12.9" M2',
-    price: 1099,
-    salePrice: 999,
+    price: 1,
+    salePrice: 1,
     category: 'Electronics',
     seller: 'Apple',
     tags: ['new'],
@@ -165,8 +165,8 @@ export const allProducts = [
   {
     id: '7',
     name: 'Adidas Ultraboost 23',
-    price: 190,
-    salePrice: 159,
+    price: 1,
+    salePrice: 1,
     category: 'Fashion',
     seller: 'Adidas',
     tags: ['trending'],

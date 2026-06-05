@@ -14,6 +14,9 @@ import ProductDetails from './pages/ProductDetails'
 import Lookbook from './components/Lookbook'
 import InquiryPage from './pages/InquiryPage'
 import { Orders } from './pages/Orders'
+import AboutUs from './pages/AboutUs'
+import Terms from './pages/Terms'
+import PrivacyPolicy from './pages/PrivacyPolicy'
 
 function AppContent() {
   return (
@@ -30,6 +33,9 @@ function AppContent() {
           <Route path='/admin' element={<Admin />} />
           <Route path='/order/:id' element={<OrderDetails />} />
           <Route path='/contact' element={<InquiryPage />} />
+          <Route path='/about' element={<AboutUs />} />
+          <Route path='/terms' element={<Terms />} />
+          <Route path='/privacy' element={<PrivacyPolicy />} />
         </Routes>
       </main>
       <Footer />

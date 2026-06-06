@@ -11,7 +11,7 @@ import { useOrderContext } from '../context/OrderContext';
 
 export default function Cart() {
   const navigate = useNavigate();
-  const { addOrder } = useOrderContext();
+  const { addOrderData } = useOrderContext();
   const {
     cartItems,
     removeFromCart,
@@ -100,7 +100,7 @@ export default function Cart() {
       email: customerInfo.email,
       amount: Math.round(total * 100),
       currency: 'GHS',
-      ref: `EMMA_${Date.now()}`,
+      ref: `Aura_${Date.now()}`,
       metadata: {
         custom_fields: [
           { display_name: "Customer Name", variable_name: "customer_name", value: customerInfo.name },
@@ -116,37 +116,51 @@ export default function Cart() {
   };
 
   const createOrder = async (reference, items, total) => {
-    try {
-      const orderData = {
-        customer: customerInfo,
-        items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          size: item.size,
-          color: item.color,
-          image: item.image
-        })),
-        total,
-        paymentRef: reference,
-        status: 'paid',
-      };
+    const orderData = {
+      customer: customerInfo,
+      items: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        size: item.size,
+        color: item.color,
+        image: item.image
+      })),
+      total,
+      paymentRef: reference,
+      status: 'paid',
+      createdAt: new Date().toISOString(),
+    };
   
-      const order = await axios.post(`${backendUrl}/order/create-order`, { orderData });
-      if (order.data.success) {
+    try {
+      const res = await axios.post(`${backendUrl}/order/create-order`, { orderData });
+  
+      if (res.data.success) {
         toast.success("Order placed successfully!");
-        addOrder(order.data.data);
+        addOrderData(res.data.data);
         items.forEach(item => removeFromCart(item.cartItemId));
         return true;
       } else {
-        toast.error("Order saved locally. Contact support with ref: " + reference);
-        return false;
+        throw new Error(res.data.message || 'Server rejected order');
       }
     } catch (error) {
-      toast.error("Order saved locally. Contact support with ref: " + reference);
-      console.error(error);
+      console.error('API failed, saving order locally:', error);
+  
+      // Mark as pending sync and save locally
+      const localOrder = {
+      ...orderData,
+        status: 'pending_sync',
+        syncError: error.message
+      };
+  
+      addOrderData(localOrder); // Adds to context + localStorage via your useEffect
       items.forEach(item => removeFromCart(item.cartItemId));
+  
+      toast.warning("Order saved locally", {
+        description: `We'll sync when online. Ref: ${reference}`
+      });
+  
       return false;
     }
   };

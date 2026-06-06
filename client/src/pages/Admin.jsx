@@ -2,6 +2,8 @@ import axios from 'axios';
 import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
+import { Package, Truck, CheckCircle, Clock, AlertCircle, RefreshCw, ShoppingBag, XCircle, RotateCcw, Search } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const StatCard = ({ title, value, change, icon, color }) => {
   const isPositive = change >= 0;
@@ -39,18 +41,67 @@ const StatusBadge = ({ status }) => {
     returned: { color: 'bg-zinc-500', label: 'Returned' },
     confirmed: { color: 'bg-green-500', label: 'Resolved' },
     completed: { color: 'bg-blue-500', label: 'Completed' },
-    'no-show': { color: 'bg-zinc-500', label: 'No Show' }
+    'no-show': { color: 'bg-zinc-500', label: 'No Show' },
+    pending_sync: { color: 'bg-amber-500', label: 'Pending Sync' },
+    out_for_delivery: { color: 'bg-indigo-500', label: 'Out for Delivery' }
   };
   const c = config[status] || config.pending;
   return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold text-white ${c.color}`}>{c.label}</span>;
 };
 
+// Status groups for filtering
+const ORDER_STATUS_GROUPS = {
+  all: {
+    label: 'All Orders',
+    icon: Package,
+    statuses: null // null = show all
+  },
+  pending_sync: {
+    label: 'Pending Sync',
+    icon: AlertCircle,
+    statuses: ['pending_sync']
+  },
+  pending: {
+    label: 'Payment Pending',
+    icon: Clock,
+    statuses: ['pending']
+  },
+  paid: {
+    label: 'Paid',
+    icon: CheckCircle,
+    statuses: ['paid']
+  },
+  processing: {
+    label: 'Processing',
+    icon: Package,
+    statuses: ['processing']
+  },
+  shipped: {
+    label: 'Shipped',
+    icon: Truck,
+    statuses: ['shipped', 'out_for_delivery']
+  },
+  delivered: {
+    label: 'Delivered',
+    icon: CheckCircle,
+    statuses: ['delivered']
+  },
+  cancelled: {
+    label: 'Cancelled',
+    icon: XCircle,
+    statuses: ['cancelled', 'returned']
+  }
+};
+
 export const Admin = () => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
   const [orders, setOrders] = useState([]);
   const [styleSessions, setStyleSessions] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [orderSearch, setOrderSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   const backendUrl = import.meta.env.VITE_ENV === "development"? import.meta.env.VITE_BACKEND_URL : "/api";
 
@@ -60,8 +111,6 @@ export const Admin = () => {
         const res = await axios.get(`${backendUrl}/order/data`);
         if (res.data.success) {
           setOrders(res.data.orders);
-        } else {
-          console.log(res.data);
         }
       } catch (error) {
         console.error(error);
@@ -74,8 +123,6 @@ export const Admin = () => {
         const res = await axios.get(`${backendUrl}/order/c-data`);
         if (res.data.success) {
           setStyleSessions(res.data.consults);
-        } else {
-          console.log(res.data);
         }
       } catch (error) {
         console.error(error);
@@ -91,10 +138,9 @@ export const Admin = () => {
     if (!orders?.length) return;
 
     const customerMap = orders
-    .filter(order => order.status!== 'cancelled' && order.email)
-    .reduce((acc, order) => {
+  .filter(order => order.status!== 'cancelled' && order.email)
+  .reduce((acc, order) => {
         const email = order.email;
-
         if (!acc[email]) {
           acc[email] = {
             _id: email,
@@ -105,21 +151,18 @@ export const Admin = () => {
             lastOrder: order.createdAt
           };
         }
-
         acc[email].orders += 1;
         acc[email].totalSpent += order.total || 0;
-        // Keep latest order date
         if (new Date(order.createdAt) > new Date(acc[email].lastOrder)) {
           acc[email].lastOrder = order.createdAt;
         }
-
         return acc;
       }, {});
 
     setCustomers(Object.values(customerMap));
   }, [orders]);
 
-  // Single loop for all analytics
+  // Analytics
   const analytics = useMemo(() => {
     if (!orders.length) {
       return {
@@ -131,8 +174,7 @@ export const Admin = () => {
         totalCustomers: 0,
         totalCustomersChange: 0,
         revenueData: [],
-        topCategories: [],
-        ordersByStatus: { active: 0, completed: 0, cancelled: 0 }
+        topCategories: []
       };
     }
 
@@ -144,7 +186,6 @@ export const Admin = () => {
     const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
     const twoWeeksAgo = new Date(now); twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-    // Init last 7 days for chart
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const last7Days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
@@ -158,17 +199,13 @@ export const Admin = () => {
     let todayRevenue = 0;
     let yesterdayRevenue = 0;
     let activeOrders = 0;
-    let completedOrders = 0;
-    let cancelledOrders = 0;
     const salesByItem = {};
     const thisWeekCustomerEmails = new Set();
     const lastWeekCustomerEmails = new Set();
 
     orders.forEach(o => {
       const d = new Date(o.createdAt);
-      const isCancelled = o.status === 'cancelled';
-
-      if (isCancelled) cancelledOrders++;
+      const isCancelled = ['cancelled', 'returned'].includes(o.status);
 
       if (!isCancelled) {
         if (d >= weekAgo) {
@@ -182,7 +219,6 @@ export const Admin = () => {
         if (d >= todayStart && d <= todayEnd) todayRevenue += o.total || 0;
         if (d >= yesterdayStart && d <= yesterdayEnd) yesterdayRevenue += o.total || 0;
 
-        // Revenue chart
         const dayIdx = last7Days.findIndex(day => {
           const next = new Date(day.date);
           next.setDate(next.getDate() + 1);
@@ -190,7 +226,6 @@ export const Admin = () => {
         });
         if (dayIdx!== -1) last7Days[dayIdx].revenue += o.total || 0;
 
-        // Top categories
         const items = o.items || [{ itemName: o.itemName, quantity: o.quantity || 1, price: o.total }];
         items.forEach(item => {
           const name = item.itemName || 'Unknown';
@@ -199,8 +234,7 @@ export const Admin = () => {
         });
       }
 
-      if (['paid', 'processing', 'shipped'].includes(o.status)) activeOrders++;
-      if (o.status === 'delivered') completedOrders++;
+      if (['paid', 'processing', 'shipped', 'out_for_delivery'].includes(o.status)) activeOrders++;
     });
 
     const getChange = (current, previous) => {
@@ -217,10 +251,41 @@ export const Admin = () => {
       totalCustomers: customers.length,
       totalCustomersChange: getChange(thisWeekCustomerEmails.size, lastWeekCustomerEmails.size),
       revenueData: last7Days.map(d => ({ day: d.day, revenue: Math.round(d.revenue) })),
-      topCategories: Object.values(salesByItem).sort((a, b) => b.value - a.value).slice(0, 4),
-      ordersByStatus: { active: activeOrders, completed: completedOrders, cancelled: cancelledOrders }
+      topCategories: Object.values(salesByItem).sort((a, b) => b.value - a.value).slice(0, 4)
     };
   }, [orders, customers]);
+
+  // Get counts per status for tab badges
+  const statusCounts = useMemo(() => {
+    const counts = { all: orders.length };
+    Object.entries(ORDER_STATUS_GROUPS).forEach(([key, group]) => {
+      if (group.statuses) {
+        counts[key] = orders.filter(o => group.statuses.includes(o.status)).length;
+      }
+    });
+    return counts;
+  }, [orders]);
+
+  // Filter orders by status group + search
+  const filteredOrders = useMemo(() => {
+    const group = ORDER_STATUS_GROUPS[orderStatusFilter];
+    let filtered = group.statuses
+  ? orders.filter(o => group.statuses.includes(o.status))
+      : orders;
+
+    if (orderSearch.trim()) {
+      const q = orderSearch.toLowerCase();
+      filtered = filtered.filter(o =>
+        o._id?.toLowerCase().includes(q) ||
+        o.customerName?.toLowerCase().includes(q) ||
+        o.email?.toLowerCase().includes(q) ||
+        o.itemName?.toLowerCase().includes(q) ||
+        o.items?.some(i => i.name?.toLowerCase().includes(q))
+      );
+    }
+
+    return filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }, [orders, orderStatusFilter, orderSearch]);
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
@@ -237,9 +302,9 @@ export const Admin = () => {
 
   const updateEnquiryStatus = async (enquiryId, newStatus) => {
     try {
-      const res = await axios.put(`${backendUrl}/order/update-consult`, { 
-        consultId: enquiryId, // keep same endpoint if backend didn't change
-        status: newStatus 
+      const res = await axios.put(`${backendUrl}/order/update-consult`, {
+        consultId: enquiryId,
+        status: newStatus
       });
       if (res.data.success) {
         toast.success('Enquiry updated!');
@@ -248,6 +313,21 @@ export const Admin = () => {
     } catch (error) {
       console.error(error);
       toast.error('Failed to update enquiry');
+    }
+  };
+
+  const refreshOrders = async () => {
+    setRefreshing(true);
+    try {
+      const res = await axios.get(`${backendUrl}/order/data`);
+      if (res.data.success) {
+        setOrders(res.data.orders);
+        toast.success('Orders refreshed');
+      }
+    } catch (error) {
+      toast.error('Failed to refresh');
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -271,7 +351,6 @@ export const Admin = () => {
       <div className="mx-auto max-w-7xl">
         {/* Header */}
         <div className="mb-8">
-          
           <p className="mt-2 text-zinc-600 dark:text-zinc-400">Manage orders, sessions & track performance</p>
         </div>
 
@@ -283,7 +362,7 @@ export const Admin = () => {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 font-semibold transition ${
                 activeTab === tab.id
-             ? 'border-rose-500 text-rose-500'
+            ? 'border-rose-500 text-rose-500'
                   : 'border-transparent text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
               }`}
             >
@@ -380,18 +459,61 @@ export const Admin = () => {
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-2xl font-bold">All Orders</h2>
               <div className="flex gap-2">
-                <span className="rounded-lg bg-rose-500/20 px-3 py-1 text-sm font-semibold text-rose-600 dark:text-rose-400">
-                  {analytics.ordersByStatus.active} Active
-                </span>
-                <span className="rounded-lg bg-green-500/20 px-3 py-1 text-sm font-semibold text-green-600 dark:text-green-400">
-                  {analytics.ordersByStatus.completed} Done
-                </span>
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    type="text"
+                    placeholder="Search orders..."
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-300 bg-white py-2 pl-10 pr-4 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                  />
+                </div>
+                <button
+                  onClick={refreshOrders}
+                  disabled={refreshing}
+                  className="flex shrink-0 items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshing? 'animate-spin' : ''}`} />
+                </button>
               </div>
             </div>
 
+            {/* Status Filter Tabs */}
+            <div className="flex gap-2 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800">
+              {Object.entries(ORDER_STATUS_GROUPS).map(([key, group]) => {
+                const Icon = group.icon;
+                const count = statusCounts[key] || 0;
+                const isActive = orderStatusFilter === key;
+
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setOrderStatusFilter(key)}
+                    className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-bold transition ${
+                      isActive
+                   ? 'border-rose-500 text-rose-500'
+                        : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {group.label}
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${
+                      isActive
+                   ? 'bg-rose-500 text-white'
+                        : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Orders Table */}
             <div className="overflow-hidden rounded-2xl bg-white shadow-lg dark:bg-zinc-900">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -408,38 +530,57 @@ export const Admin = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {orders.map(order => (
-                      <tr key={order._id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                        <td className="px-6 py-4 font-mono text-sm">#{order._id.slice(-6).toUpperCase()}</td>
-                        <td className="px-6 py-4 font-semibold">{order.customerName}</td>
-                        <td className="px-6 py-4 text-zinc-600 dark:text-zinc-400">{order.itemName}</td>
-                        <td className="px-6 py-4 text-sm">
-                          {order.size} / <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: order.color }}></span>
-                        </td>
-                        <td className="px-6 py-4 font-bold text-rose-500">₵{order.total}</td>
-                        <td className="px-6 py-4"><StatusBadge status={order.status} /></td>
-                        <td className="px-6 py-4 text-sm text-zinc-500">
-                          {new Date(order.createdAt).toLocaleDateString()}
-                        </td>
-                        <td className="px-6 py-4">
-                          <select
-                            value={order.status}
-                            onChange={(e) => updateOrderStatus(order._id, e.target.value)}
-                            className="rounded-lg border border-zinc-300 bg-white px-3 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="paid">Paid</option>
-                            <option value="processing">Processing</option>
-                            <option value="shipped">Shipped</option>
-                            <option value="delivered">Delivered</option>
-                            <option value="cancelled">Cancelled</option>
-                            <option value="returned">Returned</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
+                    <AnimatePresence>
+                      {filteredOrders.map(order => (
+                        <motion.tr
+                          key={order._id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                        >
+                          <td className="px-6 py-4 font-mono text-sm">#{order._id.slice(-6).toUpperCase()}</td>
+                          <td className="px-6 py-4 font-semibold">{order.customerName}</td>
+                          <td className="px-6 py-4 text-zinc-600 dark:text-zinc-400">
+                            {order.items?.[0]?.name || order.itemName}
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            {order.items?.[0]?.size!== 'N/A' && `${order.items?.[0]?.size} / `}
+                            {order.items?.[0]?.color!== 'N/A' && (
+                              <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: order.items?.[0]?.color }}></span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 font-bold text-rose-500">₵{order.total}</td>
+                          <td className="px-6 py-4"><StatusBadge status={order.status} /></td>
+                          <td className="px-6 py-4 text-sm text-zinc-500">
+                            {new Date(order.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4">
+                            <select
+                              value={order.status}
+                              onChange={(e) => updateOrderStatus(order._id, e.target.value)}
+                              className="rounded-lg border border-zinc-300 bg-white px-3 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="paid">Paid</option>
+                              <option value="processing">Processing</option>
+                              <option value="shipped">Shipped</option>
+                              <option value="out_for_delivery">Out for Delivery</option>
+                              <option value="delivered">Delivered</option>
+                              <option value="cancelled">Cancelled</option>
+                              <option value="returned">Returned</option>
+                            </select>
+                          </td>
+                        </motion.tr>
+                      ))}
+                    </AnimatePresence>
                   </tbody>
                 </table>
+                {filteredOrders.length === 0 && (
+                  <div className="py-12 text-center text-zinc-500">
+                    No {ORDER_STATUS_GROUPS[orderStatusFilter].label.toLowerCase()} orders found
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -454,13 +595,13 @@ export const Admin = () => {
                 {styleSessions.length} Total
               </span>
             </div>
-            
+
             {styleSessions.length? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {styleSessions.map(enquiry => {
                   const created = new Date(enquiry.createdAt);
                   const updated = new Date(enquiry.updatedAt);
-                  
+
                   return (
                     <div key={enquiry._id} className="rounded-2xl bg-white p-6 shadow-lg dark:bg-zinc-900">
                       <div className="mb-4 flex items-start justify-between gap-2">
@@ -485,7 +626,7 @@ export const Admin = () => {
                           </a>
                         </p>
                         <p className="flex items-center gap-2">
-                          <span>🏷️</span>
+                          <span>🏷</span>
                           <span className="font-semibold">{enquiry.subject}</span>
                         </p>
                       </div>
@@ -497,15 +638,15 @@ export const Admin = () => {
                       </div>
 
                       <div className="mb-4 space-y-1 text-xs text-zinc-500">
-                        <p>📅 Created: {created.toLocaleDateString('en-GB', { 
-                          day: 'numeric', 
+                        <p>📅 Created: {created.toLocaleDateString('en-GB', {
+                          day: 'numeric',
                           month: 'short',
                           year: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit'
                         })}</p>
-                        <p>🔄 Updated: {updated.toLocaleDateString('en-GB', { 
-                          day: 'numeric', 
+                        <p>🔄 Updated: {updated.toLocaleDateString('en-GB', {
+                          day: 'numeric',
                           month: 'short',
                           hour: '2-digit',
                           minute: '2-digit'

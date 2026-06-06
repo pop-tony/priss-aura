@@ -1,90 +1,156 @@
-// src/context/OrderContext.jsx
 import axios from 'axios';
 import React from 'react'
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 
 const OrderContext = createContext();
 
 export function OrderProvider({ children }) {
-  const [orderIds, setOrderIds] = useState(() => {
-    const saved = localStorage.getItem('emmastudio-orderIds');
+  const [orders, setOrders] = useState(() => {
+    const saved = localStorage.getItem('emmastudio-orders');
     return saved? JSON.parse(saved) : [];
   });
-  const [orders, setOrders] = useState([]);
+  const [isPolling, setIsPolling] = useState(false);
   const isInitialLoad = useRef(true);
-
+  const pollIntervalRef = useRef(null);
   const backendUrl = import.meta.env.VITE_ENV === "development"? import.meta.env.VITE_BACKEND_URL : "/api";
 
-  // Load orders on mount only
+  // Save to localStorage whenever orders change
   useEffect(() => {
-    const loadOrders = async () => {
-      try {
-        if (!orderIds.length) {
-          isInitialLoad.current = false;
-          return;
-        }
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return;
+    }
+    localStorage.setItem('emmastudio-orders', JSON.stringify(orders));
+  }, [orders]);
 
-        const promises = orderIds.map(async (orderId) => {
-          try {
-            const res = await axios.get(`${backendUrl}/order/i-data?orderId=${orderId}`);
-            return res.data.success? res.data.data : null;
-          } catch (error) {
-            console.error(`Failed to fetch order ${orderId}:`, error);
-            return null;
-          }
-        });
-
-        const results = await Promise.all(promises);
-        const fetchedOrders = results.filter(Boolean);
-
-        setOrders(fetchedOrders);
-      } catch (error) {
-        console.error('[ORDERS] Failed to load orders:', error);
-      } finally {
-        isInitialLoad.current = false;
-      }
-    };
-
-    loadOrders();
-  }, []); // Only on mount - remove orderIds dependency
-
-  // Save orderIds when they change
-  useEffect(() => {
-    if (isInitialLoad.current) return;
-    localStorage.setItem('emmastudio-orderIds', JSON.stringify(orderIds));
-  }, [orderIds]);
-
-  const addOrder = (orderId) => {
-    // Prevent duplicates
-    setOrderIds(prev => {
-      if (prev.includes(orderId)) return prev;
-      return [...prev, orderId];
+  const addOrderData = (orderData) => {
+    setOrders(prev => {
+      if (prev.some(o => o._id === orderData._id)) return prev;
+      return [...prev, orderData];
     });
   };
 
-  // Add full order object directly - use this after successful checkout
-  const addOrderData = (orderData) => {
-    setOrders(prev => [...prev, orderData]);
-    if (orderData._id) {
-      addOrder(orderData._id);
+  const updateOrderStatus = (orderId, newStatus) => {
+    setOrders(prev => prev.map(o =>
+      o._id === orderId? {...o, status: newStatus, updatedAt: new Date().toISOString() } : o
+    ));
+  };
+
+  // Poll server for status updates every 60s
+  const checkOrderStatusUpdates = useCallback(async () => {
+    if (isPolling ||!orders.length) return;
+
+    // Only check non-terminal orders
+    const ordersToCheck = orders.filter(o =>
+    !['delivered', 'cancelled', 'returned'].includes(o.status) &&
+    !o._id.startsWith('local_') // Skip unsynced local orders
+    );
+
+    if (!ordersToCheck.length) return;
+
+    setIsPolling(true);
+    try {
+      const results = await Promise.allSettled(
+        ordersToCheck.map(async (order) => {
+          const res = await axios.get(`${backendUrl}/order/i-data?orderId=${order._id}`);
+          return res.data.success? res.data.data : null;
+        })
+      );
+
+      let updatedCount = 0;
+      setOrders(prev => {
+        const updated = [...prev];
+        results.forEach((result, i) => {
+          if (result.status === 'fulfilled' && result.value) {
+            const serverOrder = result.value;
+            const localOrder = ordersToCheck[i];
+
+            // Only update if status changed
+            if (serverOrder.status!== localOrder.status) {
+              const idx = updated.findIndex(o => o._id === localOrder._id);
+              if (idx!== -1) {
+                updated[idx] = {...updated[idx],...serverOrder };
+                updatedCount++;
+                toast.info(`Order #${localOrder._id.slice(-6).toUpperCase()} updated to ${serverOrder.status}`);
+              }
+            }
+          }
+        });
+        return updated;
+      });
+
+      if (updatedCount > 0) {
+        console.log(`[Orders] Updated ${updatedCount} order statuses`);
+      }
+    } catch (error) {
+      console.error('[Orders] Poll failed:', error);
+    } finally {
+      setIsPolling(false);
+    }
+  }, [orders, backendUrl, isPolling]);
+
+  // Start polling on mount, cleanup on unmount
+  useEffect(() => {
+    // Initial check after 5s, then every 60s
+    const initialTimeout = setTimeout(checkOrderStatusUpdates, 5000);
+    pollIntervalRef.current = setInterval(checkOrderStatusUpdates, 60000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [checkOrderStatusUpdates]);
+
+  // Retry syncing pending orders
+  const syncPendingOrders = async () => {
+    const pending = orders.filter(o => o.status === 'pending_sync');
+    if (!pending.length) return;
+
+    const results = await Promise.allSettled(
+      pending.map(async (localOrder) => {
+        const { _id, status, syncError,...payload } = localOrder;
+        const res = await axios.post(`${backendUrl}/order/create-order`, { orderData: payload });
+        if (res.data.success) {
+          return { oldId: _id, newOrder: res.data.data };
+        }
+        throw new Error(res.data.message);
+      })
+    );
+
+    let syncedCount = 0;
+    setOrders(prev => {
+      let updated = [...prev];
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          const { oldId, newOrder } = result.value;
+          updated = updated.map(o => o._id === oldId? newOrder : o);
+          syncedCount++;
+        }
+      });
+      return updated;
+    });
+
+    if (syncedCount) {
+      toast.success(`Synced ${syncedCount} pending order${syncedCount > 1? 's' : ''}`);
+    }
+
+    const failedCount = pending.length - syncedCount;
+    if (failedCount) {
+      toast.error(`${failedCount} order${failedCount > 1? 's' : ''} still pending`);
     }
   };
 
   const ordersCount = orders.length;
 
-  const updateOrderStatus = (orderId, newStatus) => {
-    setOrders(prev => prev.map(o =>
-      o._id === orderId? {...o, status: newStatus } : o
-    ));
-  };
-
   return (
     <OrderContext.Provider value={{
       orders,
-      addOrder,
-      addOrderData, // Use this for instant UI update
+      addOrderData,
       ordersCount,
-      updateOrderStatus
+      updateOrderStatus,
+      syncPendingOrders,
+      checkOrderStatusUpdates // Expose for manual refresh
     }}>
       {children}
     </OrderContext.Provider>

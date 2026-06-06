@@ -53,15 +53,16 @@ export const createOrder = async (req, res) => {
     const { price, quantity, color, size, image } = items[0];
     const customerName = name;
     const itemName = items[0].name
+    
     // Validate required fields
-    if (!customerName || !email || !phone || !address || !itemName || !price || !quantity || !total || !paymentRef || !status || !color || !size || !image) {
+    if (!customerName || !email || !phone || !address || !itemName || !price || !quantity || !total || !paymentRef || !status || !image) {
       return res.status(400).json({ success: false, message: 'Missing Required Details' });
     }
     
     const order = new orderAModel({ customerName, email, phone, address, itemName, price, quantity, total, paymentRef, status, color, size, image });
     await order.save();
 
-    return res.json({ success: true, message: "Order successfully created", data: order._id });
+    return res.json({ success: true, message: "Order successfully created", data: order });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ success: false, message: error.message });

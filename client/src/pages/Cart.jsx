@@ -136,8 +136,7 @@ export default function Cart() {
       const order = await axios.post(`${backendUrl}/order/create-order`, { orderData });
       if (order.data.success) {
         toast.success("Order placed successfully!");
-        // FIX: Pass ID to addOrder, or r for instant update
-        addOrder(order.data.data); // This adds both ID + order object
+        addOrder(order.data.data);
         items.forEach(item => removeFromCart(item.cartItemId));
         return true;
       } else {

@@ -239,48 +239,55 @@ export default function ShopPage() {
           </>
         ) : (
           <div className="space-y-12">
-            {sections.map((section, idx) => {
-              const isExpanded = showAll[section.category];
-              const displayProducts = isExpanded? section.products : section.products.slice(0, 4);
-              const hasMore = section.products.length > 4;
+          {sections.map((section, idx) => {
+            const isExpanded = showAll[section.category];
+            const displayProducts = isExpanded ? section.products : section.products;
+            const hasMore = section.products.length > 4;
 
-              return (
-                <div key={idx}>
-                  <div className="mb-6 flex items-end justify-between">
-                    <h2 className="text-2xl font-black md:text-3xl">{section.title}</h2>
-                    {hasMore && (
-                      <button
-                        onClick={() => toggleShowAll(section.category)}
-                        className="flex items-center gap-2 text-sm font-bold hover:text-rose-500"
-                      >
-                        {isExpanded? (
-                          <>Show Less <ChevronUp className="h-4 w-4" /></>
-                        ) : (
-                          <>View All {section.products.length} <ChevronDown className="h-4 w-4" /></>
-                        )}
-                      </button>
-                    )}
-                  </div>
-
-                  <motion.div layout className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
-                    <AnimatePresence initial={false}>
-                      {displayProducts.map((product, i) => (
-                        <motion.div
-                          key={product.id}
-                          layout
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          transition={{ duration: 0.2, delay: i * 0.02 }}
-                        >
-                          <ProductCard product={product} />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </motion.div>
+            return (
+              <div key={idx} className="product-section">
+                <div className="mb-6 flex items-end justify-between">
+                  <h2 className="text-2xl font-black md:text-3xl">{section.title}</h2>
+                  {hasMore && (
+                    <button
+                      onClick={() => toggleShowAll(section.category)}
+                      className="flex items-center gap-2 text-sm font-bold hover:text-rose-500"
+                    >
+                      {isExpanded ? (
+                        <>Show Less <ChevronUp className="h-4 w-4" /></>
+                      ) : (
+                        <>View All {section.products.length} <ChevronDown className="h-4 w-4" /></>
+                      )}
+                    </button>
+                  )}
                 </div>
-              );
-            })}
+
+                <div
+                  className={`${
+                    isExpanded
+                      ? 'grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4'
+                      : 'flex gap-6 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin'
+                  }`}
+                >
+                  <AnimatePresence initial={false}>
+                    {(isExpanded ? displayProducts : displayProducts).map((product, i) => (
+                      <motion.div
+                        key={product.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.2, delay: i * 0.02 }}
+                        className={!isExpanded ? 'w-64 flex-shrink-0 snap-start' : ''}
+                      >
+                        <ProductCard product={product} />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            );
+          })}
           </div>
         )}
       </div>

@@ -4,7 +4,7 @@ export default function HeroSection() {
   const navigate = useNavigate();
 
   return (
-    <div className="mt-20 relative h- w-full overflow-hidden bg-zinc-100 dark:bg-zinc-950">
+    <div className="relative h-100 w-full overflow-hidden bg-zinc-100 dark:bg-zinc-950">
       <img
         src="https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?w=1600"
         alt="Marketplace"

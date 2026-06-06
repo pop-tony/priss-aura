@@ -300,7 +300,9 @@ export default function OrderDetails() {
               >
                 Continue Shopping
               </button>
-              <button className="rounded-xl border-2 border-zinc-300 px-6 py-3 font-bold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
+              <button
+              onClick={() => navigate('/contact')}
+              className="rounded-xl border-2 border-zinc-300 px-6 py-3 font-bold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
                 Get Help
               </button>
             </div>

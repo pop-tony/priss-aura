@@ -41,7 +41,7 @@ export default function NavBar() {
   return (
     <>
       <nav
-        className={`fixed top-0 z-50 w-full transition-all duration-300 ${
+        className={`sticky top-0 z-50 w-full transition-all duration-300 ${
           scrolled
          ? 'bg-white/90 backdrop-blur-md shadow-sm dark:bg-neutral-950/90'
            : 'bg-transparent'

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Mail, Phone, MapPin, Send, CheckCircle } from 'lucide-react';
+import axios from 'axios';
 
 export default function InquiryPage() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phoneNumber: '',
+    phone: '',
     orderNumber: '',
     subject: '',
     message: ''
@@ -13,12 +14,14 @@ export default function InquiryPage() {
   const [status, setStatus] = useState('idle');
   const [errors, setErrors] = useState({});
 
+  const backendUrl = import.meta.env.VITE_ENV === "development"? import.meta.env.VITE_BACKEND_URL : "/api";
+
   const validate = () => {
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.email.trim()) newErrors.email = 'Email is required';
     else if (!/^\S+@\S+\.\S+$/.test(formData.email)) newErrors.email = 'Email is invalid';
-    if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
+    if (!formData.phone.trim()) newErrors.phone = 'Phone number is required';
     if (!formData.subject.trim()) newErrors.subject = 'Subject is required';
     if (!formData.message.trim()) newErrors.message = 'Message is required';
     setErrors(newErrors);
@@ -28,21 +31,25 @@ export default function InquiryPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
+
     setStatus('loading');
+    
     try {
-      const res = await fetch('https://formspree.io/f/YOUR_FORM_ID', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      if (res.ok) {
+      const res = await axios.post(`${backendUrl}/order/consult`, {formData});
+      
+      if (res.data.success) {
         setStatus('success');
-        setFormData({ name: '', email: '', phoneNumber: '', orderNumber: '', subject: '', message: '' });
+        setFormData({ name: '', email: '', phone: '', orderNumber: '', subject: '', message: '' });
         setTimeout(() => setStatus('idle'), 5000);
-      } else setStatus('error');
-    } catch {
+      } else {
+        setStatus('error');
+        console.log(res.data)
+      }
+    } catch(err) {
       setStatus('error');
+      console.error(err)
     }
+
   };
 
   const handleChange = (e) => {
@@ -113,10 +120,10 @@ export default function InquiryPage() {
               <div className="grid gap-6 sm:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-semibold">Phone Number <span className="text-rose-500">*</span></label>
-                  <input type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange}
-                    className={`w-full rounded-lg border bg-white px-4 py-3 outline-none transition focus:ring-2 focus:ring-black dark:bg-zinc-900 dark:focus:ring-white ${errors.phoneNumber? 'border-red-500' : 'border-zinc-300 dark:border-zinc-700'}`}
+                  <input type="tel" name="phone" value={formData.phone} onChange={handleChange}
+                    className={`w-full rounded-lg border bg-white px-4 py-3 outline-none transition focus:ring-2 focus:ring-black dark:bg-zinc-900 dark:focus:ring-white ${errors.phone? 'border-red-500' : 'border-zinc-300 dark:border-zinc-700'}`}
                     placeholder="+233 50 123 4567" />
-                  {errors.phoneNumber && <p className="mt-1 text-xs text-red-500">{errors.phoneNumber}</p>}
+                  {errors.phone && <p className="mt-1 text-xs text-red-500">{errors.phone}</p>}
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold">Order Number <span className="text-zinc-400">(optional)</span></label>
